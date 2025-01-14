@@ -29,6 +29,9 @@ private[mill] object Reflect {
       if isLegalIdentifier(n) && (m.getModifiers & Modifier.STATIC) == 0
     } yield (m, n)
 
+  private def classLessThan(c1: Class[_], c2: Class[_]): Boolean =
+    !c1.equals(c2) && c1.isAssignableFrom(c2)
+
   def reflect(
       outer: Class[_],
       inner: Class[_],
@@ -57,12 +60,11 @@ private[mill] object Reflect {
     //    same `getDeclaringClass`. To handle these scenarios, also sort by
     //    return type, so we can identify the most specific override
 
-    arr.sortInPlaceWith((m1, m2) =>
-      if (m1.getDeclaringClass.equals(m2.getDeclaringClass)) {
-        m1.getReturnType.isAssignableFrom(m2.getReturnType)
-      } else {
-        m1.getDeclaringClass.isAssignableFrom(m2.getDeclaringClass)
-      }
+    arr.sortInPlace()(
+      Ordering.fromLessThan(classLessThan).on[Method](_.getDeclaringClass)
+        .orElse(Ordering.fromLessThan(classLessThan).on[Method](_.getReturnType))
+        .orElseBy(_.getName)
+        .orElseBy(_.toString) // it seems to need this as an additional tie-breaker
     )
 
     val res = arr.reverseIterator.distinctBy(_.getName).toArray
